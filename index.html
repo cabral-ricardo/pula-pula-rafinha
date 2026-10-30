@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Pula Pula Rafinha</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -78,10 +78,69 @@
   .btn.purple:active { box-shadow: 0 1px 0 #6a4fd6; }
   .btn.yellow { background: var(--yellow); color: var(--ink); box-shadow: 0 4px 0 #d9ad1c; }
   .btn.yellow:active { box-shadow: 0 1px 0 #d9ad1c; }
-  #duck { display: none; }
-  @media (pointer: coarse) { #duck { display: inline-block; } }
   input[type=file] { display: none; }
   .tip { margin: 0; font-size: 15px; opacity: 0.8; text-align: center; }
+
+  /* setas transparentes (só no modo tela cheia / celular) */
+  .arrow {
+    display: none;
+    position: fixed;
+    z-index: 3;
+    bottom: calc(env(safe-area-inset-bottom) + 12px);
+    width: 76px;
+    height: 76px;
+    padding: 0;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.7);
+    background: rgba(139, 108, 255, 0.22);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+    box-shadow: 0 4px 14px rgba(74, 59, 92, 0.18);
+    align-items: center;
+    justify-content: center;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    cursor: pointer;
+  }
+  .arrow svg { width: 58%; height: 58%; fill: rgba(255, 255, 255, 0.92); filter: drop-shadow(0 2px 2px rgba(74, 59, 92, 0.35)); }
+  .arrow.on { background: rgba(139, 108, 255, 0.45); transform: scale(0.94); }
+  #down { left: calc(env(safe-area-inset-left) + 12px); }
+  #up { right: calc(env(safe-area-inset-right) + 12px); }
+
+  /* modo tela cheia: celular/tablet ou janela estreita */
+  html:has(body.full) { overflow: hidden; overscroll-behavior: none; }
+  body.full { padding: 0; overflow: hidden; overscroll-behavior: none; }
+  body.full .wrap { position: fixed; inset: 0; max-width: none; }
+  body.full canvas { aspect-ratio: auto; border-radius: 0; box-shadow: none; }
+  body.full .tip { display: none; }
+  body.full .arrow { display: flex; }
+  body.full h1 { display: none; }
+  body.full .bar {
+    position: fixed;
+    z-index: 2;
+    left: 0;
+    right: 0;
+    bottom: calc(env(safe-area-inset-bottom) + 8px);
+    gap: 8px;
+  }
+  body.full .btn { font-size: 14px; padding: 6px 14px; box-shadow: 0 3px 0 #d94c86; }
+  body.full .btn.purple { box-shadow: 0 3px 0 #6a4fd6; }
+  body.portrait h1 {
+    display: block;
+    position: fixed;
+    z-index: 2;
+    top: calc(env(safe-area-inset-top) + 10px);
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 34px;
+    filter: drop-shadow(0 2px 0 #fff) drop-shadow(0 -2px 0 #fff) drop-shadow(2px 0 0 #fff) drop-shadow(-2px 0 0 #fff);
+  }
+  body.portrait .bar { bottom: auto; top: calc(env(safe-area-inset-top) + 64px); }
+  body.portrait .arrow { width: 96px; height: 96px; bottom: calc(env(safe-area-inset-bottom) + 34px); }
+  body.portrait #down { left: calc(env(safe-area-inset-left) + 22px); }
+  body.portrait #up { right: calc(env(safe-area-inset-right) + 22px); }
 </style>
 </head>
 <body>
@@ -93,24 +152,23 @@
     <label class="btn" for="file">📷 Escolher foto</label>
     <input id="file" type="file" accept="image/*">
     <button class="btn purple" id="mute">🔊 Som</button>
-    <button class="btn yellow" id="duck">⬇ Abaixar</button>
   </div>
+  <button class="arrow" id="down" aria-label="Abaixar"><svg viewBox="0 0 24 24"><path d="M12 21 3.5 11.5H9V3h6v8.5h5.5z"/></svg></button>
+  <button class="arrow" id="up" aria-label="Pular"><svg viewBox="0 0 24 24"><path d="M12 3l8.5 9.5H15V21H9v-8.5H3.5z"/></svg></button>
   <p class="tip">Pular: <b>Espaço</b>, <b>↑</b> ou toque na tela (segure para pular mais alto) · Abaixar: <b>↓</b> · Pegue as estrelas ⭐</p>
 
 <script>
 (() => {
-  const W = 900, H = 340, GROUND = 290;
+  // dimensões lógicas: fixas no computador, ajustadas à tela no celular
+  let W = 900, H = 340, GROUND = 290, S = 1, full = false, portrait = false;
   const cv = document.getElementById('game');
-  const ctx = cv.getContext('2d');
+  const mainCtx = cv.getContext('2d');
+  let ctx = mainCtx; // trocado temporariamente ao desenhar obstáculos com contorno
+  const touch = matchMedia('(pointer: coarse)').matches;
 
-  function resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    cv.width = W * dpr;
-    cv.height = H * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }
-  resize();
-  addEventListener('resize', resize);
+  // telas auxiliares para o contorno dos obstáculos
+  const spr = document.createElement('canvas'), sprCtx = spr.getContext('2d');
+  const sil = document.createElement('canvas'), silCtx = sil.getContext('2d');
 
   // ---------- armazenamento local (pode falhar em aba anônima) ----------
   const load = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
@@ -233,6 +291,42 @@
   }
   reset();
 
+  function layout() {
+    const vw = innerWidth, vh = innerHeight;
+    full = touch || vw < 700;
+    portrait = full && vh > vw;
+    document.body.classList.toggle('full', full);
+    document.body.classList.toggle('portrait', portrait);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let cw, ch;
+    if (full) {
+      cw = vw; ch = vh;
+      cv.style.width = cw + 'px';
+      cv.style.height = ch + 'px';
+      // em pé a visão é mais estreita, então a Rafinha aparece maior
+      W = portrait ? 540 : 900;
+      H = W * ch / cw;
+      if (H < 340) { H = 340; W = H * cw / ch; }
+      GROUND = Math.round(portrait ? H * 0.7 : H - 50);
+    } else {
+      cv.style.width = cv.style.height = '';
+      W = 900; H = 340; GROUND = 290;
+      cw = cv.clientWidth || W; ch = cw * H / W;
+    }
+    S = dpr * cw / W;
+    cv.width = Math.round(cw * dpr);
+    cv.height = Math.round(ch * dpr);
+    mainCtx.setTransform(S, 0, 0, S, 0, 0);
+    spr.width = spr.height = sil.width = sil.height = Math.ceil(130 * S);
+    // no celular deitado a Rafinha fica longe da seta da esquerda
+    P.x = portrait ? 100 : full ? 190 : 120;
+  }
+  layout();
+  addEventListener('resize', layout);
+  addEventListener('orientationchange', () => setTimeout(layout, 150));
+  const hudY = () => portrait ? GROUND - 320 : 13;
+  const maxSpeed = () => portrait ? 700 : 900;
+
   function burst(x, y, n, colors, power = 260) {
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2, v = rand(power * 0.3, power);
@@ -272,9 +366,14 @@
   addEventListener('pointerup', () => { P.held = false; });
   addEventListener('pointercancel', () => { P.held = false; });
 
-  const duckBtn = document.getElementById('duck');
-  duckBtn.addEventListener('pointerdown', e => { e.preventDefault(); P.duck = true; });
-  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => duckBtn.addEventListener(ev, () => { P.duck = false; }));
+  function arrowButton(id, down, up) {
+    const b = document.getElementById(id);
+    b.addEventListener('pointerdown', e => { e.preventDefault(); b.classList.add('on'); down(); });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => b.addEventListener(ev, () => { b.classList.remove('on'); up(); }));
+    b.addEventListener('contextmenu', e => e.preventDefault());
+  }
+  arrowButton('up', () => { P.held = true; press(); }, () => { P.held = false; });
+  arrowButton('down', () => { P.duck = true; }, () => { P.duck = false; });
 
   // ---------- obstáculos ----------
   const GROUND_TYPES = [
@@ -330,7 +429,7 @@
       return;
     }
 
-    speed = Math.min(900, speed + dt * 9);
+    speed = Math.min(maxSpeed(), speed + dt * 9);
     const dx = speed * dt;
     offset += dx;
     dist += dx;
@@ -341,7 +440,7 @@
       level = lv;
       flash = 0.6;
       sfx.level();
-      burst(W - 110, 40, 25, ['#ffd23f', '#ff6fa8', '#4fd18b', '#4fb3ff']);
+      burst(W - 110, hudY() + 27, 25, ['#ffd23f', '#ff6fa8', '#4fd18b', '#4fb3ff']);
     }
 
     // física do pulo: segurar = pulo mais alto, abaixar no ar = cai rápido
@@ -385,7 +484,7 @@
   }
 
   // ---------- cenário ----------
-  const clouds = Array.from({ length: 6 }, (_, i) => ({ x: i * 190 + rand(0, 80), y: rand(30, 120), s: rand(0.7, 1.2), face: i % 2 === 0 }));
+  const clouds = Array.from({ length: 6 }, (_, i) => ({ x: i * 190 + rand(0, 80), fy: rand(0.1, 0.41), s: rand(0.7, 1.2), face: i % 2 === 0 }));
 
   function drawSky() {
     const g = ctx.createLinearGradient(0, 0, 0, GROUND);
@@ -396,7 +495,7 @@
     ctx.fillRect(0, 0, W, H);
 
     // arco-íris
-    const rx = 520 - (offset * 0.04 % (W + 700)) + 350;
+    const rx = W - 30 - (offset * 0.04 % (W + 700));
     const colors = ['#ff5e7e', '#ff9a3f', '#ffd23f', '#5fd38b', '#4fb3ff', '#8b6cff'];
     ctx.globalAlpha = 0.45;
     ctx.lineWidth = 11;
@@ -409,7 +508,7 @@
     ctx.globalAlpha = 1;
 
     // sol sorridente
-    const sx = 800, sy = 66;
+    const sx = W - 100, sy = GROUND < 400 ? 66 : GROUND * 0.3;
     ctx.save();
     ctx.translate(sx, sy);
     ctx.rotate(t * 0.4);
@@ -430,7 +529,7 @@
       const span = W + 240;
       const x = ((c.x - offset * 0.12) % span + span) % span - 120;
       ctx.save();
-      ctx.translate(x, c.y);
+      ctx.translate(x, c.fy * GROUND);
       ctx.scale(c.s, c.s);
       ctx.fillStyle = '#fff';
       [[0, 0, 22], [24, -10, 26], [50, 0, 22], [25, 8, 22]].forEach(([a, b, r]) => {
@@ -487,14 +586,18 @@
       ctx.fill();
     }
     // caminho de terra
-    ctx.fillStyle = '#ffd9a0';
+    const dirt = ctx.createLinearGradient(0, GROUND + 12, 0, Math.max(H, GROUND + 60));
+    dirt.addColorStop(0, '#ffd9a0');
+    dirt.addColorStop(1, '#f6c48a');
+    ctx.fillStyle = dirt;
     ctx.fillRect(0, GROUND + 12, W, H - GROUND - 12);
-    ctx.fillStyle = '#f5c27e';
     const step = 60, first = Math.floor(offset / step);
-    for (let i = -1; i < W / step + 2; i++) {
-      const n = first + i;
-      const x = n * step - offset;
-      circle(x + hash(n) * 40, GROUND + 22 + hash(n + 1) * 22, 3 + hash(n + 2) * 3, '#f0b56a');
+    for (let row = 0; GROUND + 22 + row * 44 < H; row++) {
+      for (let i = -1; i < W / step + 2; i++) {
+        const n = first + i, k = n + row * 97;
+        const x = n * step - offset;
+        circle(x + hash(k) * 40, GROUND + 22 + row * 44 + hash(k + 1) * 22, 3 + hash(k + 2) * 3, '#f0b56a');
+      }
     }
     // florzinhas na grama
     const fstep = 55, ffirst = Math.floor(offset / fstep);
@@ -544,13 +647,19 @@
       circle(x + 16, cy, 9, '#a8693b');
       cuteFace(x + 16, cy - 1, 0.7);
     } else if (o.type === 'bush') {
-      circle(x + 16, b - 16, 17, '#47b863');
-      circle(x + 52, b - 16, 17, '#47b863');
-      circle(x + 34, b - 22, 21, '#5fcf74');
+      // tons azulados para não sumir no verde da grama
+      circle(x + 16, b - 16, 17, '#138a7e');
+      circle(x + 52, b - 16, 17, '#138a7e');
+      ctx.fillStyle = '#138a7e';
       ctx.fillRect(x + 2, b - 16, 64, 16);
-      circle(x + 14, b - 22, 3.5, '#ff5e7e');
-      circle(x + 56, b - 20, 3.5, '#ff5e7e');
-      circle(x + 44, b - 34, 3.5, '#ff5e7e');
+      circle(x + 34, b - 22, 21, '#1fb3a0');
+      circle(x + 27, b - 32, 6, 'rgba(255,255,255,0.3)');
+      circle(x + 12, b - 22, 5, '#ff3d6e');
+      circle(x + 57, b - 21, 5, '#ff3d6e');
+      circle(x + 45, b - 35, 5, '#ff3d6e');
+      circle(x + 11, b - 24, 1.6, '#fff');
+      circle(x + 56, b - 23, 1.6, '#fff');
+      circle(x + 44, b - 37, 1.6, '#fff');
       cuteFace(x + 32, b - 20, 1);
     } else if (o.type === 'gift') {
       ctx.fillStyle = o.color;
@@ -585,6 +694,37 @@
       circle(x + 16, cy + 3, 3, 'rgba(255,120,150,0.6)');
     }
     ctx.restore();
+  }
+
+  // desenha o obstáculo numa tela auxiliar e cola com contorno escuro e sombra no chão
+  const PAD = 16, OUTLINE = '#3b2b4a';
+  const RING = [[1, 0], [-1, 0], [0, 1], [0, -1], [0.7, 0.7], [-0.7, 0.7], [0.7, -0.7], [-0.7, -0.7]];
+  function drawObstacleOutlined(o) {
+    const flying = o.type === 'bird';
+    ctx.fillStyle = flying ? 'rgba(60,30,80,0.12)' : 'rgba(60,30,80,0.28)';
+    ctx.beginPath();
+    ctx.ellipse(o.x + o.w / 2, GROUND + 3, o.w * (flying ? 0.4 : 0.6), flying ? 4 : 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const x0 = o.x - PAD, y0 = GROUND - o.y - o.h - PAD;
+    const pw = Math.ceil((o.w + PAD * 2) * S), ph = Math.ceil((o.h + PAD * 2) * S);
+    sprCtx.setTransform(1, 0, 0, 1, 0, 0);
+    sprCtx.clearRect(0, 0, spr.width, spr.height);
+    sprCtx.setTransform(S, 0, 0, S, -x0 * S, -y0 * S);
+    ctx = sprCtx;
+    drawObstacle(o);
+    ctx = mainCtx;
+
+    silCtx.globalCompositeOperation = 'copy';
+    silCtx.drawImage(spr, 0, 0);
+    silCtx.globalCompositeOperation = 'source-in';
+    silCtx.fillStyle = OUTLINE;
+    silCtx.fillRect(0, 0, sil.width, sil.height);
+    silCtx.globalCompositeOperation = 'source-over';
+
+    const d = 3, dw = pw / S, dh = ph / S;
+    for (const [dx, dy] of RING) ctx.drawImage(sil, 0, 0, pw, ph, x0 + dx * d, y0 + dy * d, dw, dh);
+    ctx.drawImage(spr, 0, 0, pw, ph, x0, y0, dw, dh);
   }
 
   function drawStar(s) {
@@ -726,18 +866,20 @@
   function drawHUD() {
     if (state === 'ready') return;
     const pulse = flash > 0 ? 1 + Math.sin(flash * 20) * 0.08 : 1;
+    const y = hudY();
     ctx.save();
-    ctx.translate(W - 100, 30);
+    ctx.translate(W - 100, y + 17);
     ctx.scale(pulse, pulse);
     pill(-80, -17, 160, `⭐ ${score}`, '#ff6fa8');
     ctx.restore();
-    pill(W - 330, 13, 130, `Recorde ${best}`, '#8b6cff');
-    pill(20, 13, 90, `🌟 ${starCount}`, '#ff9a3f');
+    pill(W - 330, y, 130, `Recorde ${best}`, '#8b6cff');
+    pill(20, y, 90, `🌟 ${starCount}`, '#ff9a3f');
   }
 
   function panel(title, lines) {
+    const top = GROUND - 212;
     ctx.fillStyle = 'rgba(255,255,255,0.88)';
-    rr(W / 2 - 230, 78, 460, 150, 26);
+    rr(W / 2 - 230, top, 460, 150, 26);
     ctx.fill();
     ctx.lineWidth = 4;
     ctx.strokeStyle = '#ffb8d6';
@@ -746,10 +888,10 @@
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#ff6fa8';
     ctx.font = '800 38px "Baloo 2", system-ui, sans-serif';
-    ctx.fillText(title, W / 2, 122);
+    ctx.fillText(title, W / 2, top + 44);
     ctx.fillStyle = '#4a3b5c';
     ctx.font = '600 20px "Baloo 2", system-ui, sans-serif';
-    lines.forEach((l, i) => ctx.fillText(l, W / 2, 166 + i * 28));
+    lines.forEach((l, i) => ctx.fillText(l, W / 2, top + 88 + i * 28));
   }
 
   function draw() {
@@ -759,13 +901,14 @@
     hills('#8fdc9f', GROUND - 18, 14, 0.011, 0.5);
     drawGround();
     items.forEach(drawStar);
-    obs.forEach(drawObstacle);
+    obs.forEach(drawObstacleOutlined);
     drawPlayer();
     drawParticles();
     drawHUD();
 
     if (state === 'ready') {
-      panel('Vamos correr!', ['Toque na tela ou aperte ESPAÇO', 'Pule os obstáculos e pegue as estrelas ⭐']);
+      panel('Vamos correr!', [full ? 'Toque na tela ou na seta ⬆ para pular' : 'Toque na tela ou aperte ESPAÇO',
+        'Pule os obstáculos e pegue as estrelas ⭐']);
     } else if (state === 'over') {
       panel('Opa! 💫', [`Você fez ${score} pontos${score >= best && score > 0 ? ' — novo recorde! 🏆' : ''}`,
         'Toque para jogar de novo']);

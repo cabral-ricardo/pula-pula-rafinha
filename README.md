@@ -6,15 +6,19 @@ Jogo de corrida infinita feito para crianças, em que a Rafinha corre por um cam
 
 | Ação | Teclado | Toque |
 | --- | --- | --- |
-| Pular | `Espaço`, `↑` ou `W` | Tocar na tela |
-| Pular mais alto | Segurar a tecla de pulo | Segurar o toque |
-| Abaixar / cair mais rápido | `↓` ou `S` | Botão **⬇ Abaixar** |
+| Pular | `Espaço`, `↑` ou `W` | Tocar na tela ou na seta ⬆ |
+| Pular mais alto | Segurar a tecla de pulo | Segurar o toque ou a seta ⬆ |
+| Abaixar / cair mais rápido | `↓` ou `S` | Seta ⬇ |
 
 - Pule cogumelos, flores, arbustos e presentes que aparecem no chão.
 - A partir de 120 pontos surgem passarinhos voando: pule ou abaixe para desviar.
 - Cada estrela ⭐ coletada vale 25 pontos.
 - A velocidade aumenta com o tempo, e a cada 200 pontos você passa de nível.
 - O recorde fica salvo no navegador.
+
+## Celular
+
+No celular o jogo ocupa a tela inteira, tanto em pé quanto deitado. Em pé, a câmera fica mais próxima para a Rafinha aparecer maior, e as setas transparentes ⬇ e ⬆ ficam na parte de baixo da tela, longe da ação.
 
 ## Foto da personagem
 
